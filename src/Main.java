@@ -41,10 +41,10 @@ public class Main {
                         System.out.print("Insert team(s) separated by commas(A,B): ");
                         String teamsInput = scanner.nextLine().toLowerCase();
 
-                        if(teamsInput.equals("a")) {
+                        if (teamsInput.equals("a")) {
                             teamsInput = "Team A";
                         }
-                        if(teamsInput.equals("b")) {
+                        if (teamsInput.equals("b")) {
                             teamsInput = "Team B";
                         }
 
@@ -61,7 +61,17 @@ public class Main {
                         System.out.println("Selected: Delete Data");
                         break;
                     case 'r':
-                        System.out.println("Selected: Remove All Data");
+                        char confirm;
+                        System.out.println("Are you sure You want to delete all the data? You cannot undo this action (y/n)");
+                        confirm = scanner.nextLine().charAt(0);
+
+                        if (confirm == 'y') {
+                            removeAllDevelopers(connection);
+                        } else if (confirm == 'n') {
+                            System.out.println("Good idea!");
+                        } else {
+                            System.out.println("Invalid input");
+                        }
                         break;
                     default:
                         System.out.println("Invalid choice");
@@ -80,19 +90,19 @@ public class Main {
 
         String sql =
                 "SELECT " +
-                    "d.developer_id, " +
-                    "d.full_name, " +
-                    "d.email, " +
-                    "d.hire_date, " +
-                    "GROUP_CONCAT(DISTINCT pl.language_name) AS languages, " +
-                    "GROUP_CONCAT(DISTINCT dt.team_name) AS teams\n" +
-                "FROM developers d\n" +
-                "LEFT JOIN developer_languages dl ON (d.developer_id = dl.developer_id)\n" +
-                "LEFT JOIN programming_languages pl ON (dl.language_id = pl.language_id)\n" +
-                "LEFT JOIN team_members tm ON (d.developer_id = tm.developer_id)\n" +
-                "LEFT JOIN developer_teams dt ON (tm.team_id = dt.team_id)\n" +
-                "GROUP BY d.developer_id\n" +
-                "ORDER BY d.developer_id";
+                        "d.developer_id, " +
+                        "d.full_name, " +
+                        "d.email, " +
+                        "d.hire_date, " +
+                        "GROUP_CONCAT(DISTINCT pl.language_name) AS languages, " +
+                        "GROUP_CONCAT(DISTINCT dt.team_name) AS teams\n" +
+                        "FROM developers d\n" +
+                        "LEFT JOIN developer_languages dl ON (d.developer_id = dl.developer_id)\n" +
+                        "LEFT JOIN programming_languages pl ON (dl.language_id = pl.language_id)\n" +
+                        "LEFT JOIN team_members tm ON (d.developer_id = tm.developer_id)\n" +
+                        "LEFT JOIN developer_teams dt ON (tm.team_id = dt.team_id)\n" +
+                        "GROUP BY d.developer_id\n" +
+                        "ORDER BY d.developer_id";
 
         Statement statement = connection.createStatement();
         ResultSet result = statement.executeQuery(sql);
@@ -162,6 +172,38 @@ public class Main {
                     throw new SQLException("Creating developer failed, no ID obtained.");
                 }
             }
+        }
+    }
+
+    public static void removeAllDevelopers(Connection connection) throws SQLException {
+
+        try {
+
+            connection.setAutoCommit(false);
+
+            // Delete from team_members
+            String deleteTeamMembersSql = "DELETE FROM team_members WHERE developer_id IN (SELECT developer_id FROM developers)";
+            try (PreparedStatement deleteTeamMembersStatement = connection.prepareStatement(deleteTeamMembersSql)) {
+                deleteTeamMembersStatement.executeUpdate();
+            }
+
+            // Delete from developer_languages
+            String deleteDeveloperLanguagesSql = "DELETE FROM developer_languages WHERE developer_id IN (SELECT developer_id FROM developers)";
+            try (PreparedStatement deleteDeveloperLanguagesStatement = connection.prepareStatement(deleteDeveloperLanguagesSql)) {
+                deleteDeveloperLanguagesStatement.executeUpdate();
+            }
+
+            // Delete from developers
+            String deleteDevelopersSql = "DELETE FROM developers";
+            try (PreparedStatement deleteDevelopersStatement = connection.prepareStatement(deleteDevelopersSql)) {
+                deleteDevelopersStatement.executeUpdate();
+            }
+            connection.commit();
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            connection.setAutoCommit(true);
         }
     }
 }
