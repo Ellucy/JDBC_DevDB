@@ -1,7 +1,7 @@
 import java.sql.*;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Scanner;
+import java.sql.Date;
+import java.util.*;
+import java.util.stream.Collectors;
 
 public class Main {
 
@@ -17,7 +17,7 @@ public class Main {
             while (choice == 'y') {
 
                 System.out.println("What do you want to do?\n" +
-                        "i - input data\n" +
+                        "i - add another developer\n" +
                         "v - view data\n" +
                         "d - delete data\n" +
                         "r - remove all data");
@@ -26,7 +26,33 @@ public class Main {
 
                 switch (subChoice) {
                     case 'i':
-                        System.out.println("Selected: Input Data");
+                        System.out.print("Insert full name: ");
+                        String name = scanner.nextLine();
+
+                        System.out.print("Insert email: ");
+                        String email = scanner.nextLine();
+
+                        System.out.print("Insert existing programming language(s) separated by commas(Java,Python,JavaScript): ");
+                        String languagesInput = scanner.nextLine();
+                        List<String> languages = Arrays.stream(languagesInput.split(","))
+                                .map(String::trim)
+                                .collect(Collectors.toList());
+
+                        System.out.print("Insert team(s) separated by commas(A,B): ");
+                        String teamsInput = scanner.nextLine().toLowerCase();
+
+                        if(teamsInput.equals("a")) {
+                            teamsInput = "Team A";
+                        }
+                        if(teamsInput.equals("b")) {
+                            teamsInput = "Team B";
+                        }
+
+                        List<String> teams = Arrays.stream(teamsInput.split(","))
+                                .map(String::trim)
+                                .collect(Collectors.toList());
+
+                        addDeveloper(connection, name, email, new Date(System.currentTimeMillis()), languages, teams);
                         break;
                     case 'v':
                         readData(connection);
@@ -88,6 +114,54 @@ public class Main {
 
         for (DeveloperInfo developerInfo : developersMap.values()) {
             System.out.println(developerInfo.toString());
+        }
+    }
+
+    public static void addDeveloper(Connection connection, String fullName, String email, Date hireDate,
+                                    List<String> languages, List<String> teams) throws SQLException {
+
+        String addDeveloperSql = "INSERT INTO developers (full_name, email, hire_date) VALUES (?, ?, ?)";
+        String addLanguagesSql = "INSERT INTO developer_languages (developer_id, language_id) VALUES (?, " +
+                "(SELECT language_id FROM programming_languages WHERE language_name = ?))";
+        String addTeamsSql = "INSERT INTO team_members (team_id, developer_id) VALUES (" +
+                "(SELECT team_id FROM developer_teams WHERE team_name = ?), ?)";
+
+        try (PreparedStatement addDeveloperStatement = connection.prepareStatement(addDeveloperSql, Statement.RETURN_GENERATED_KEYS);
+             PreparedStatement addLanguagesStatement = connection.prepareStatement(addLanguagesSql);
+             PreparedStatement addTeamsStatement = connection.prepareStatement(addTeamsSql)) {
+
+            addDeveloperStatement.setString(1, fullName);
+            addDeveloperStatement.setString(2, email);
+            addDeveloperStatement.setDate(3, hireDate);
+
+            int affectedRows = addDeveloperStatement.executeUpdate();
+
+            if (affectedRows == 0) {
+                throw new SQLException("Creating developer failed.");
+            }
+
+            try (ResultSet result = addDeveloperStatement.getGeneratedKeys()) {
+                if (result.next()) {
+                    int developerId = result.getInt(1);
+
+                    for (String language : languages) {
+                        addLanguagesStatement.setInt(1, developerId);
+                        addLanguagesStatement.setString(2, language);
+                        addLanguagesStatement.addBatch();
+                    }
+
+                    for (String team : teams) {
+                        addTeamsStatement.setString(1, team);
+                        addTeamsStatement.setInt(2, developerId);
+                        addTeamsStatement.addBatch();
+                    }
+
+                    addLanguagesStatement.executeBatch();
+                    addTeamsStatement.executeBatch();
+                } else {
+                    throw new SQLException("Creating developer failed, no ID obtained.");
+                }
+            }
         }
     }
 }
