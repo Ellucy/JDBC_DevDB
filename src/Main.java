@@ -41,11 +41,14 @@ public class Main {
                         System.out.print("Insert team(s) separated by commas(A,B): ");
                         String teamsInput = scanner.nextLine().toLowerCase();
 
-                        if (teamsInput.equals("a")) {
-                            teamsInput = "Team A";
-                        }
-                        if (teamsInput.equals("b")) {
-                            teamsInput = "Team B";
+                        String[] teamMappings = {"a:Team A", "b:Team B"};
+
+                        for (String mapping : teamMappings) {
+                            String[] parts = mapping.split(":");
+                            String inputVariant = parts[0];
+                            String teamName = parts[1];
+
+                            teamsInput = teamsInput.replace(inputVariant, teamName);
                         }
 
                         List<String> teams = Arrays.stream(teamsInput.split(","))
@@ -54,12 +57,17 @@ public class Main {
 
                         addDeveloper(connection, name, email, new Date(System.currentTimeMillis()), languages, teams);
                         break;
+
                     case 'v':
                         readData(connection);
                         break;
+
                     case 'd':
-                        System.out.println("Selected: Delete Data");
+                        System.out.print("Insert the full name of the developer you want to delete: ");
+                        String devToDelete = scanner.nextLine();
+                        deleteDeveloper(connection, devToDelete);
                         break;
+
                     case 'r':
                         char confirm;
                         System.out.println("Are you sure You want to delete all the data? You cannot undo this action (y/n)");
@@ -206,4 +214,61 @@ public class Main {
             connection.setAutoCommit(true);
         }
     }
+
+    public static void deleteDeveloper(Connection connection, String fullName) throws SQLException {
+
+        try {
+
+            connection.setAutoCommit(false);
+            int developerId = getDeveloperId(connection, fullName);
+
+            if (developerId != -1) {
+
+                // Delete from team_members
+                String deleteTeamMembersSql = "DELETE FROM team_members WHERE developer_id = ?";
+                try (PreparedStatement deleteTeamMembersStatement = connection.prepareStatement(deleteTeamMembersSql)) {
+                    deleteTeamMembersStatement.setInt(1, developerId);
+                    deleteTeamMembersStatement.executeUpdate();
+                }
+
+                // Delete from developer_languages
+                String deleteDeveloperLanguagesSql = "DELETE FROM developer_languages WHERE developer_id = ?";
+                try (PreparedStatement deleteDeveloperLanguagesStatement = connection.prepareStatement(deleteDeveloperLanguagesSql)) {
+                    deleteDeveloperLanguagesStatement.setInt(1, developerId);
+                    deleteDeveloperLanguagesStatement.executeUpdate();
+                }
+
+                // Delete from developers
+                String deleteDeveloperSql = "DELETE FROM developers WHERE developer_id = ?";
+                try (PreparedStatement deleteDeveloperStatement = connection.prepareStatement(deleteDeveloperSql)) {
+                    deleteDeveloperStatement.setInt(1, developerId);
+                    deleteDeveloperStatement.executeUpdate();
+                }
+
+                connection.commit();
+            } else {
+                connection.rollback();
+                throw new SQLException("Developer not found with full_name: " + fullName);
+            }
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            connection.setAutoCommit(true);
+        }
+    }
+
+    private static int getDeveloperId(Connection connection, String fullName) throws SQLException {
+        String query = "SELECT developer_id FROM developers WHERE full_name = ?";
+        try (PreparedStatement statement = connection.prepareStatement(query)) {
+            statement.setString(1, fullName);
+            try (var resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return resultSet.getInt("developer_id");
+                }
+            }
+        }
+        return -1;
+    }
+
 }
